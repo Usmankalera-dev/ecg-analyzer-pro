@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ECG Analyzer Pro — by Usman Kalera</title>
+<meta name="description" content="Browser-only ECG strip analyzer: upload a photo, select a lead, measure heart rate, rhythm, QRS width and ST level. Research and educational aid, not a medical device.">
+<style>
+*{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;background:#07131a;color:#eaf6f1}
+header{padding:22px 16px 10px;text-align:center} h1{margin:0;font-size:26px} .sub{color:#9fd8c5;margin-top:6px}
+.warn{background:#3d0a0a;border:1px solid #ff6b6b;color:#ffd9d9;padding:12px 14px;border-radius:12px;margin:14px auto;max-width:900px;font-size:14px;line-height:1.5}
+.wrap{max-width:900px;margin:0 auto;padding:0 14px 40px}
+.card{background:#0e2230;border:1px solid #1e3f4f;border-radius:16px;padding:16px;margin:12px 0}
+h2{margin:0 0 10px;font-size:18px} h3{margin:14px 0 6px;font-size:15px}
+button,.filebtn{background:#00d1a0;color:#06231c;border:0;padding:11px 16px;border-radius:10px;font-weight:700;cursor:pointer;margin:4px 4px 4px 0}
+button.secondary{background:#17384a;color:#dff3ec} button.demo{background:#123b2e;color:#a7f3dd}
+input[type=file]{display:none} label,select,input{font-size:15px}
+select,input[type=number]{background:#0a1f2b;color:#fff;border:1px solid #2a4d5e;border-radius:8px;padding:8px}
+canvas{width:100%;background:#fff;border-radius:12px;touch-action:none}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.stat{background:#0a1f2b;border:1px solid #23485a;border-radius:12px;padding:12px} .stat b{font-size:22px;display:block} .stat span{color:#9fd8c5;font-size:13px}
+.ok{color:#4ade80}.bad{color:#ff7a7a}.mid{color:#facc15}
+.hint{border-left:4px solid #00d1a0;background:#0a2a24;padding:10px 12px;border-radius:8px;margin:8px 0}
+.small{color:#9fb8ad;font-size:13px;line-height:1.55} a{color:#6ee7c8}
+#report{white-space:pre-wrap;background:#081a24;border:1px solid #23485a;border-radius:12px;padding:14px;font-size:14px;line-height:1.6}
+@media print{body{background:#fff;color:#000} .noprint{display:none} .card,.stat{border-color:#ccc} }
+</style>
+</head>
+<body>
+<header>
+<h1>❤️ ECG Analyzer Pro</h1>
+<div class="sub">by Usman Kalera &nbsp;•&nbsp; Production build v1.0 — 2 November 2026 &nbsp;•&nbsp; Browser-only — your ECG photo never leaves your device</div>
+</header>
+
+<div class="warn"><b>RESEARCH AND EDUCATIONAL SCREENING AID — NOT A CERTIFIED MEDICAL DEVICE, NOT A DIAGNOSIS.</b><br>
+This production-quality web app measures what it can see in one ECG strip (heart rate, rhythm, QRS width, ST level). It does <b>not</b> diagnose myocardial infarction, conduction disease, hypertrophy or any other condition. A single lead cannot diagnose heart disease. Clinical production diagnosis would require validated models, multi-lead clinical validation, cardiologist review and regulatory clearance — none of which this tool claims. If you have chest pain, breathlessness or any emergency, call emergency services and see a qualified doctor immediately. Do not use this result to start, stop or change any treatment.</div>
+
+<div class="wrap">
+
+<div class="card">
+<h2>1 — Upload an ECG photo</h2>
+<p class="small">Use a straight, well-lit photo showing the full ECG. Then <b>drag on the image to select a single-lead strip</b> (for example, one Lead II line). If you do not select a strip, the middle band of the full image will be used.<br>
+Tip: a tilted or blurry photo gives a wrong result — check the quality score first, then press Analyze.</p>
+<label class="filebtn" for="file">📷 Choose ECG Photo</label>
+<input type="file" id="file" accept="image/*">
+<button class="secondary" id="fullBtn">Use full image</button>
+<button class="secondary" id="clearSel">Clear selection</button>
+<div style="margin-top:10px">
+<label>How long is the strip?
+<select id="duration"><option value="2.5">2.5 sec</option><option value="5">5 sec</option><option value="10" selected>10 sec (standard 12-lead print)</option></select></label>
+&nbsp; <label>Grid: 1 mm = <input type="number" id="pxmm" value="10" min="3" max="40" style="width:70px"> pixels (estimate for mV)</label>
+</div>
+<canvas id="imgCanvas" width="900" height="420"></canvas>
+<p class="small" id="imgStatus">No image yet. You can also test with the demos below — no photo required.</p>
+</div>
+
+<div class="card">
+<h2>2 — Demo traces (test without a photo)</h2>
+<p class="small">These demo traces are computer-generated synthetic ECGs — not real patient data. They test the pipeline: image → waveform → measurement.</p>
+<button class="demo" data-demo="normal">Normal — 72 bpm</button>
+<button class="demo" data-demo="fast">Fast — 118 bpm</button>
+<button class="demo" data-demo="slow">Slow — 48 bpm</button>
+<button class="demo" data-demo="irregular">Irregular rhythm</button>
+<button class="demo" data-demo="wide">Wide QRS</button>
+<button class="demo" data-demo="st">ST elevated pattern</button>
+</div>
+
+<div class="card noprint">
+<button id="analyzeBtn" style="font-size:17px;padding:14px 22px">🔍 Analyze</button>
+<span class="small" id="analyzeStatus"></span>
+</div>
+
+<div class="card">
+<h2>3 — Quality check (not just pass/fail — with numbers)</h2>
+<p class="small">Idea taken from major repositories: measure image quality first, then trust the measurement. On a blurry photo the tool will warn you and ask for a retake.</p>
+<div class="grid" id="quality"></div>
+<p id="qualityVerdict"></p>
+</div>
+
+<div class="card">
+<h2>4 — Extracted waveform + measurement overlay</h2>
+<p class="small">Red dots = R-peaks (heartbeats). Green dots = ST points (80 ms after QRS). This is not a black-box Grad-CAM heatmap — these are the exact points the numbers were calculated from, so you can verify them yourself.</p>
+<canvas id="waveCanvas" width="900" height="260"></canvas>
+<div class="grid" id="results"></div>
+</div>
+
+<div class="card">
+<h2>5 — Pattern hints (rule-based — no trained classifier claim)</h2>
+<p class="small">The hints below are only <b>rules built from measured numbers</b>. They may point toward the PTB-XL 5 superclasses (NORM, MI, STTC, CD, HYP), but they are <b>not</b> predictions from a trained EfficientNet/ResNet model and they are <b>not</b> a diagnosis. Real classification requires a validated model + all 12 leads + a doctor.</p>
+<div id="hints"><p class="small">No analysis yet.</p></div>
+</div>
+
+<div class="card">
+<h2>6 — Report</h2>
+<div id="report">A report will appear here after analysis. You can print it as a PDF, or download it as text below.</div>
+<br>
+<button class="secondary" onclick="window.print()">🖨️ Print / Save as PDF</button>
+<button class="secondary" id="dlBtn">⬇️ Download report (.txt)</button>
+</div>
+
+<div class="card">
+<h2>What was merged from major repositories?</h2>
+<p class="small">
+• <b>PTB-XL benchmarking (helme/ecg_ptbxl_benchmarking)</b> — 21,837 recordings, 10 seconds, 12 leads, 5 superclasses NORM / MI / STTC / CD / HYP; ResNet/Inception performed strongest. In this tool those 5 classes are kept only as reference patterns, not as a fake model.<br>
+• <b>Open-ECG-Digitizer (Ahus)</b> — 5-step pipeline: crop → segmentation → layout → grid calibration → 2D-to-1D signal. This tool follows the same 5 steps, with manual cropping.<br>
+• <b>ECG-code (U-Net digitization)</b> — remove the grid, keep only the waveform, handle overlapping leads. This tool ignores the pink/red grid by colour.<br>
+• <b>Isoline (Talha Salman)</b> — quality gate (retake if blurry), browser-only operation, PDF report. This tool gives quality as a number, not just pass/fail.<br>
+• <b>ECG-ML micro model idea</b> — lightweight, runs on a phone, no server upload. This tool runs entirely in the browser; no photo is sent to any server.<br>
+• <b>PTB-XL-Image-17K idea</b> — paper speed (25 mm/s) and gain (10 mm/mV) calibration. In this tool the user can set duration and pixels-per-mm.<br>
+<br>
+<b>Honest difference:</b> Isoline claims a trained EfficientNet + CNN-Transformer cross-check. This tool makes a smaller, clearer claim: it has <b>no</b> trained disease classifier, so its numbers are only what can be measured from the image. The next step (if you want it) would be to train a real 1D-ResNet on PTB-XL and convert it to ONNX — a separate, large job that cannot be done on a phone.
+</p>
+<p class="small">Sources: PTB-XL paper, helme/ecg_ptbxl_benchmarking, masoudrahimi39/ECG-code, Open-ECG-Digitizer, PTB-XL-Image-17K. This tool does not copy code from those repositories — it merges their ideas into original browser code.</p>
+</div>
+
+</div>
+<script>
+const imgC=document.getElementById('imgCanvas'),ictx=imgC.getContext('2d');
+const waveC=document.getElementById('waveCanvas'),wctx=waveC.getContext('2d');
+let img=null,imgData=null,sel=null,drag=null,lastSignal=null,lastRes=null,lastReport='';
+function drawImg(){
+  ictx.fillStyle='#fff';ictx.fillRect(0,0,imgC.width,imgC.height);
+  if(img){const s=Math.min(imgC.width/img.width,imgC.height/img.height);const w=img.width*s,h=img.height*s;const x=(imgC.width-w)/2,y=(imgC.height-h)/2;ictx.drawImage(img,x,y,w,h);imgData={x,y,w,h,s};}
+  else{ictx.fillStyle='#334155';ictx.font='20px sans-serif';ictx.textAlign='center';ictx.fillText('ECG photo yahan nazar aayegi',imgC.width/2,200);}
+  if(sel){ictx.strokeStyle='#e11d48';ictx.lineWidth=3;ictx.strokeRect(sel.x,sel.y,sel.w,sel.h);ictx.fillStyle='rgba(225,29,72,0.12)';ictx.fillRect(sel.x,sel.y,sel.w,sel.h);}
+}
+drawImg();
+function pos(e){const r=imgC.getBoundingClientRect();return{x:(e.clientX-r.left)*imgC.width/r.width,y:(e.clientY-r.top)*imgC.height/r.height};}
+imgC.addEventListener('pointerdown',e=>{drag=pos(e);sel={x:drag.x,y:drag.y,w:0,h:0};});
+imgC.addEventListener('pointermove',e=>{if(!drag)return;const p=pos(e);sel={x:Math.min(drag.x,p.x),y:Math.min(drag.y,p.y),w:Math.abs(p.x-drag.x),h:Math.abs(p.y-drag.y)};drawImg();});
+imgC.addEventListener('pointerup',()=>{drag=null;});
+document.getElementById('file').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{img=new Image();img.onload=()=>{sel=null;drawImg();document.getElementById('imgStatus').textContent='Photo loaded. Now drag to select a single-lead strip, then press Analyze.';};img.src=r.result;};r.readAsDataURL(f);});
+document.getElementById('clearSel').onclick=()=>{sel=null;drawImg();};
+document.getElementById('fullBtn').onclick=()=>{sel=null;document.getElementById('imgStatus').textContent='The full image will be used (middle strip). For a better result, select a single lead.';};
+
+// ---- synthetic demo ECG image ----
+function gauss(x,mu,sig,amp){return amp*Math.exp(-((x-mu)*(x-mu))/(2*sig*sig));}
+function demoSignal(kind,n){
+  const sig=new Array(n).fill(0);let beats=[];
+  // Pixel spacing = RR seconds x 90 px/sec (900 px strip = 10 sec). This is why the claimed bpm matches the measured HR.
+  if(kind==='normal'){for(let b=0;b<12;b++)beats.push(40+b*75);}   // 0.833 s -> 72 bpm
+  if(kind==='fast'){for(let b=0;b<19;b++)beats.push(30+b*46);}     // 0.51 s -> ~118 bpm
+  if(kind==='slow'){for(let b=0;b<8;b++)beats.push(50+b*112);}     // 1.24 s -> ~48 bpm
+  if(kind==='irregular'){beats=[50,130,240,320,440,530,660,760,880];}
+  if(kind==='wide'){for(let b=0;b<12;b++)beats.push(40+b*75);}     // same rate as normal, wider QRS only
+  if(kind==='st'){for(let b=0;b<12;b++)beats.push(40+b*75);}       // same rate as normal, ST lift only
+  for(const c of beats){
+    for(let x=0;x<n;x++){
+      const qrsW=(kind==='wide')?14:6;
+      sig[x]+=gauss(x,c-18,7,0.18)+gauss(x,c-4,3,-0.25)+gauss(x,c,qrsW,1.0)+gauss(x,c+5,3,-0.3)+gauss(x,c+32,12,0.32);
+      if(kind==='st'&&x>c+8&&x<c+45)sig[x]+=0.22;
+    }
+  }
+  return sig;
+}
+function renderDemo(kind){
+  const n=900;const s=demoSignal(kind,n);
+  ictx.fillStyle='#fff';ictx.fillRect(0,0,imgC.width,imgC.height);
+  ictx.strokeStyle='#fbcfe8';ictx.lineWidth=1;
+  for(let x=0;x<900;x+=18){ictx.beginPath();ictx.moveTo(x,0);ictx.lineTo(x,420);ictx.stroke();}
+  for(let y=0;y<420;y+=18){ictx.beginPath();ictx.moveTo(0,y);ictx.lineTo(900,y);ictx.stroke();}
+  ictx.strokeStyle='#000';ictx.lineWidth=2.5;ictx.beginPath();
+  for(let x=0;x<n;x++){const y=210-s[x]*130;if(x===0)ictx.moveTo(x,y);else ictx.lineTo(x,y);}
+  ictx.stroke();
+  // make this canvas the source image for the same pipeline
+  img=new Image();img.onload=()=>{sel={x:0,y:60,w:900,h:300};drawImg();};
+  img.src=imgC.toDataURL();
+  document.getElementById('imgStatus').textContent='Demo trace loaded: '+kind+'. Now press Analyze.';
+}
+document.querySelectorAll('[data-demo]').forEach(b=>{b.onclick=()=>renderDemo(b.dataset.demo);});
+
+// ---- core analysis ----
+function median(a){const s=[...a].sort((x,y)=>x-y);return s[Math.floor(s.length/2)]||0;}
+function smooth(a,w){const o=[];for(let i=0;i<a.length;i++){let sum=0,c=0;for(let k=-w;k<=w;k++){if(a[i+k]!==undefined){sum+=a[i+k];c++;}}o.push(sum/c);}return o;}
+function analyze(){
+  const st=document.getElementById('analyzeStatus');st.textContent='Analyzing...';
+  // get pixel data from displayed image canvas
+  const src=document.createElement('canvas');src.width=imgC.width;src.height=imgC.height;const sctx=src.getContext('2d');sctx.drawImage(imgC,0,0);
+  let rect=sel;
+  if(!rect||rect.w<40||rect.h<20){rect={x:0,y:imgC.height*0.3,w:imgC.width,h:imgC.height*0.4};}
+  const d=sctx.getImageData(rect.x,rect.y,rect.w,rect.h).data;
+  const W=Math.floor(rect.w),H=Math.floor(rect.h);
+  // quality: contrast, gradient sharpness, ink ratio (dark non-red pixels)
+  let sum=0,sum2=0,grad=0,ink=0,total=W*H;
+  const gray=[];
+  for(let i=0;i<total;i++){const r=d[i*4],g=d[i*4+1],b=d[i*4+2];const isGrid=(r>120&&r-g>25&&r-b>25);const gv=isGrid?255:(0.299*r+0.587*g+0.114*b);gray.push(gv);sum+=gv;sum2+=gv*gv;if(!isGrid&&gv<150)ink++;}
+  const mean=sum/total;const contrast=Math.sqrt(Math.max(0,sum2/total-mean*mean));
+  for(let y=1;y<H;y++)for(let x=1;x<W;x++){grad+=Math.abs(gray[y*W+x]-gray[y*W+x-1]);}
+  const sharp=grad/total;const inkPct=ink/total*100;
+  // waveform: per column median y of dark non-grid pixels
+  let sig=[];
+  for(let x=0;x<W;x++){let ys=[];for(let y=0;y<H;y++){const i=y*W+x;const r=d[i*4],g=d[i*4+1],b=d[i*4+2];const isGrid=(r>120&&r-g>25&&r-b>25);if(!isGrid&&gray[i]<150)ys.push(y);}sig.push(ys.length?median(ys):null);}
+  // fill gaps
+  let last=null;for(let i=0;i<sig.length;i++){if(sig[i]===null)sig[i]=last===null?H/2:last;else last=sig[i];}
+  sig=sig.map(v=>H-v); // up = positive
+  const base=median(sig);let s2=smooth(sig,2);s2=smooth(s2,2);
+  const mx=Math.max(...s2);const thr=base+0.55*(mx-base);
+  const dur=parseFloat(document.getElementById('duration').value);const pps=W/dur;const minDist=Math.floor(0.35*pps);
+  let peaks=[];for(let i=2;i<s2.length-2;i++){if(s2[i]>thr&&s2[i]>=s2[i-1]&&s2[i]>=s2[i+1]){if(!peaks.length||i-peaks[peaks.length-1]>=minDist)peaks.push(i);}}
+  let rrs=[];for(let i=1;i<peaks.length;i++)rrs.push((peaks[i]-peaks[i-1])/pps);
+  const meanRR=rrs.length?rrs.reduce((a,b)=>a+b,0)/rrs.length:0;const hr=meanRR?60/meanRR:0;
+  const rrMean=meanRR;let rrSd=0;if(rrs.length>1){const v=rrs.reduce((a,b)=>a+(b-rrMean)*(b-rrMean),0)/rrs.length;rrSd=Math.sqrt(v);}
+  const cv=rrMean?rrSd/rrMean*100:0;
+  // QRS width at half height
+  let widths=[];for(const p of peaks){const hgt=s2[p]-base;const half=base+0.25*hgt;let l=p;while(l>0&&s2[l]>half)l--;let r=p;while(r<s2.length-1&&s2[r]>half)r++;widths.push((r-l)/pps);}
+  const qrs=widths.length?widths.reduce((a,b)=>a+b,0)/widths.length:0;
+  const pxmm=parseFloat(document.getElementById('pxmm').value)||10;
+  let stVals=[];for(const p of peaks){const idx=Math.min(s2.length-1,p+Math.floor(0.08*pps));stVals.push((s2[idx]-base)/pxmm/10);} // mV at 10 mm/mV
+  const stMean=stVals.length?stVals.reduce((a,b)=>a+b,0)/stVals.length:0;
+  const ampMv=(mx-base)/pxmm/10;
+  // quality verdict
+  const qScore=Math.max(0,Math.min(100,Math.round(contrast/2.2+sharp*1.2+Math.min(25,inkPct*3))));
+  const qClass=qScore>=60?'ok':qScore>=35?'mid':'bad';
+  const qText=qScore>=60?'GOOD — the measurement can be trusted.':qScore>=35?'MEDIUM — the result is an estimate, recheck with a better photo.':'POOR — retake the photo: straight, well-lit, with a clearly visible grid.';
+  document.getElementById('quality').innerHTML=
+    '<div class="stat"><b>'+contrast.toFixed(1)+'</b><span>Contrast (std dev)</span></div>'+
+    '<div class="stat"><b>'+sharp.toFixed(1)+'</b><span>Sharpness (gradient)</span></div>'+
+    '<div class="stat"><b>'+inkPct.toFixed(1)+'%</b><span>Ink coverage</span></div>'+
+    '<div class="stat"><b class="'+qClass+'">'+qScore+'/100</b><span>Quality score</span></div>';
+  document.getElementById('qualityVerdict').innerHTML='<b class="'+qClass+'">'+qText+'</b> '+(peaks.length<3?' And only '+peaks.length+' R-peaks were found — choose a longer or clearer strip.':'');
+  // waveform drawing
+  wctx.fillStyle='#0a1f2b';wctx.fillRect(0,0,waveC.width,waveC.height);
+  wctx.strokeStyle='#1e3f4f';for(let x=0;x<900;x+=45){wctx.beginPath();wctx.moveTo(x,0);wctx.lineTo(x,260);wctx.stroke();}
+  const mn=Math.min(...s2),mx2=Math.max(...s2),rng=(mx2-mn)||1;
+  wctx.strokeStyle='#00d1a0';wctx.lineWidth=2;wctx.beginPath();
+  for(let i=0;i<s2.length;i++){const x=i/s2.length*900;const y=230-((s2[i]-mn)/rng)*200;if(i===0)wctx.moveTo(x,y);else wctx.lineTo(x,y);}wctx.stroke();
+  for(const p of peaks){const x=p/s2.length*900;const y=230-((s2[p]-mn)/rng)*200;wctx.fillStyle='#ff4d6d';wctx.beginPath();wctx.arc(x,y,6,0,7);wctx.fill();
+    const stIdx=Math.min(s2.length-1,p+Math.floor(0.08*pps));const sx=stIdx/s2.length*900;const sy=230-((s2[stIdx]-mn)/rng)*200;wctx.fillStyle='#4ade80';wctx.beginPath();wctx.arc(sx,sy,5,0,7);wctx.fill();}
+  document.getElementById('results').innerHTML=
+    '<div class="stat"><b>'+(hr?hr.toFixed(0)+' bpm':'—')+'</b><span>Heart rate (mean RR se)</span></div>'+
+    '<div class="stat"><b>'+peaks.length+'</b><span>R-peaks mile</span></div>'+
+    '<div class="stat"><b>'+(rrMean?rrMean.toFixed(2)+' s':'—')+'</b><span>Mean RR interval</span></div>'+
+    '<div class="stat"><b>'+cv.toFixed(1)+'%</b><span>Rhythm variability (CV)</span></div>'+
+    '<div class="stat"><b>'+(qrs?qrs.toFixed(3)+' s':'—')+'</b><span>Mean QRS width (andaza)</span></div>'+
+    '<div class="stat"><b>'+stMean.toFixed(2)+' mV</b><span>Mean ST level (80 ms baad, calibration par munhasir)</span></div>';
+  let hints=[];
+  if(!peaks.length||peaks.length<3)hints.push('⚠️ <b>Incomplete measurement:</b> R-peaks were not clearly found. Select the strip again or use a better photo. No pattern hint can be made from this.');
+  else{
+    if(hr>100)hints.push('🟡 <b>Fast rhythm hint:</b> HR '+hr.toFixed(0)+' bpm (above 100). This is only a rate observation — the cause (exercise, fever, anxiety, or a rhythm problem) cannot be determined from a single lead.');
+    else if(hr<60)hints.push('🟡 <b>Slow rhythm hint:</b> HR '+hr.toFixed(0)+' bpm (below 60). In athletes this can also be normal — a single number is not a diagnosis.');
+    else hints.push('🟢 <b>Rate in the normal range:</b> HR '+hr.toFixed(0)+' bpm. This is only the rate — it is not proof that the full ECG is normal.');
+    if(cv>12)hints.push('🟡 <b>Irregular rhythm hint:</b> RR intervals vary by '+cv.toFixed(1)+'%. This may point toward a conduction / rhythm pattern, but a longer recording and a doctor are required to confirm it.');
+    else hints.push('🟢 <b>Rhythm looks regular</b> in this strip (CV '+cv.toFixed(1)+'%).');
+    if(qrs>0.12)hints.push('🟡 <b>Wide QRS hint (toward a conduction pattern):</b> QRS '+qrs.toFixed(3)+' s (more than 0.12 s). In PTB-XL, this kind of pattern is associated with the CD (conduction disturbance) class — but this is not a diagnosis, only a single-lead estimate.');
+    else hints.push('🟢 <b>QRS width looks in the normal range</b> ('+qrs.toFixed(3)+' s).');
+    if(Math.abs(stMean)>0.10)hints.push('🟡 <b>ST deviation hint (toward an ST/T pattern):</b> ST level '+stMean.toFixed(2)+' mV. In PTB-XL, the STTC class is associated with this kind of change — but an ST decision cannot be made from a single lead, a single photo, and without calibration. Showing it to a doctor is essential.');
+    else hints.push('🟢 <b>No large ST change seen</b> in this strip ('+stMean.toFixed(2)+' mV).');
+    if(ampMv>2.5)hints.push('🟡 <b>High voltage observed:</b> R amplitude '+ampMv.toFixed(2)+' mV. A hypertrophy decision depends on voltage + multiple leads + patient history, not on a single lead.');
+    hints.push('ℹ️ <b>This tool never decides MI (heart attack):</b> identifying MI requires all 12 leads, the ST pattern in each lead, and clinical history. This tool will never give an MI label — that limit is deliberate, so it does not create false reassurance or false alarm.');
+  }
+  document.getElementById('hints').innerHTML=hints.map(h=>'<div class="hint">'+h+'</div>').join('');
+  lastSignal=s2;lastRes={hr,peaks:peaks.length,rrMean,cv,qrs,stMean,ampMv,qScore,contrast,sharp,inkPct};
+  lastReport='ECG ANALYZER PRO — by Usman Kalera\nRESEARCH AND EDUCATIONAL SCREENING AID ONLY, NOT A DIAGNOSIS. See a doctor for any concern.\n\nMethod: Browser-only image digitization. Crop -> grid-colour suppression -> column median waveform -> R-peak detection -> HR/RR/QRS/ST measurement. No trained disease classifier used. No photo uploaded to any server.\n\nQuality: contrast '+contrast.toFixed(1)+', sharpness '+sharp.toFixed(1)+', ink '+inkPct.toFixed(1)+'%, score '+qScore+'/100 — '+qText+'\nHeart rate: '+(hr?hr.toFixed(0)+' bpm':'not measurable')+'\nR-peaks: '+peaks.length+'\nMean RR: '+(rrMean?rrMean.toFixed(2)+' s':'—')+'\nRhythm variability CV: '+cv.toFixed(1)+'%\nMean QRS width: '+(qrs?qrs.toFixed(3)+' s':'—')+'\nMean ST level (80ms after QRS): '+stMean.toFixed(2)+' mV (depends on pixels-per-mm calibration: '+pxmm+')\nR amplitude: '+ampMv.toFixed(2)+' mV (calibration-dependent)\nStrip duration assumed: '+dur+' seconds\n\nPattern hints (rule-based, NOT diagnosis):\n'+hints.map(h=>'- '+h.replace(/<[^>]+>/g,'')).join('\n')+'\n';
+  document.getElementById('report').textContent=lastReport;
+  st.textContent='Done. See quality and measurements above.';
+}
+document.getElementById('analyzeBtn').onclick=analyze;
+document.getElementById('dlBtn').onclick=()=>{if(!lastReport){alert('Analyze first.');return;}const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([lastReport],{type:'text/plain'}));a.download='ECG-Analyzer-Pro-Report.txt';a.click();};
+</script>
+</body>
+</html>
